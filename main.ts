@@ -349,15 +349,67 @@ export default class ObsidianSyncPlugin extends Plugin {
 
             new Notice(`Found ${vaults.length} vaults. Syncing all...`);
 
-            // Sync each vault
+            // Create a folder for synced vaults
+            const syncedVaultsFolder = 'Synced Vaults';
+            await this.ensureDirectory(syncedVaultsFolder);
+
+            // Sync each vault into its own folder
             for (const vault of vaults) {
-                const currentVaultName = this.settings.vaultName;
-                this.settings.vaultName = vault.name;
-                
+                // Skip if it's the current vault
+                if (vault.name === this.settings.vaultName || vault.name === this.app.vault.getName()) {
+                    continue;
+                }
+
                 new Notice(`Syncing vault: ${vault.name}`);
-                await this.pullChanges();
                 
-                this.settings.vaultName = currentVaultName;
+                // Create folder for this vault
+                const vaultFolder = `${syncedVaultsFolder}/${vault.name}`;
+                await this.ensureDirectory(vaultFolder);
+
+                // Fetch files for this vault
+                const filesResponse = await fetch(`${this.settings.serverUrl}/sync/pull`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.settings.token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        vaultName: vault.name,
+                        lastSync: null // Get all files
+                    })
+                });
+
+                if (!filesResponse.ok) {
+                    new Notice(`Failed to sync vault: ${vault.name}`);
+                    continue;
+                }
+
+                const data = await filesResponse.json();
+                const serverFiles = data.files;
+
+                // Create files in the vault folder
+                for (const serverFile of serverFiles) {
+                    if (!serverFile.deleted && serverFile.content) {
+                        const targetPath = `${vaultFolder}/${serverFile.path}`;
+                        
+                        // Ensure directory exists
+                        const dir = targetPath.substring(0, targetPath.lastIndexOf('/'));
+                        if (dir) {
+                            await this.ensureDirectory(dir);
+                        }
+
+                        // Check if file exists
+                        const existingFile = this.app.vault.getAbstractFileByPath(targetPath);
+                        
+                        if (existingFile instanceof TFile) {
+                            // Update existing file
+                            await this.app.vault.modify(existingFile, serverFile.content);
+                        } else {
+                            // Create new file
+                            await this.app.vault.create(targetPath, serverFile.content);
+                        }
+                    }
+                }
             }
 
             new Notice('All vaults synced successfully!');

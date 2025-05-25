@@ -293,12 +293,48 @@ var ObsidianSyncPlugin = class extends import_obsidian.Plugin {
       this.settings.knownVaults = vaults.map((v) => v.name);
       await this.saveSettings();
       new import_obsidian.Notice(`Found ${vaults.length} vaults. Syncing all...`);
+      const syncedVaultsFolder = "Synced Vaults";
+      await this.ensureDirectory(syncedVaultsFolder);
       for (const vault of vaults) {
-        const currentVaultName = this.settings.vaultName;
-        this.settings.vaultName = vault.name;
+        if (vault.name === this.settings.vaultName || vault.name === this.app.vault.getName()) {
+          continue;
+        }
         new import_obsidian.Notice(`Syncing vault: ${vault.name}`);
-        await this.pullChanges();
-        this.settings.vaultName = currentVaultName;
+        const vaultFolder = `${syncedVaultsFolder}/${vault.name}`;
+        await this.ensureDirectory(vaultFolder);
+        const filesResponse = await fetch(`${this.settings.serverUrl}/sync/pull`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${this.settings.token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            vaultName: vault.name,
+            lastSync: null
+            // Get all files
+          })
+        });
+        if (!filesResponse.ok) {
+          new import_obsidian.Notice(`Failed to sync vault: ${vault.name}`);
+          continue;
+        }
+        const data = await filesResponse.json();
+        const serverFiles = data.files;
+        for (const serverFile of serverFiles) {
+          if (!serverFile.deleted && serverFile.content) {
+            const targetPath = `${vaultFolder}/${serverFile.path}`;
+            const dir = targetPath.substring(0, targetPath.lastIndexOf("/"));
+            if (dir) {
+              await this.ensureDirectory(dir);
+            }
+            const existingFile = this.app.vault.getAbstractFileByPath(targetPath);
+            if (existingFile instanceof import_obsidian.TFile) {
+              await this.app.vault.modify(existingFile, serverFile.content);
+            } else {
+              await this.app.vault.create(targetPath, serverFile.content);
+            }
+          }
+        }
       }
       new import_obsidian.Notice("All vaults synced successfully!");
     } catch (error) {
