@@ -9,6 +9,7 @@ interface SyncSettings {
     lastSync: string;
     syncAllVaults: boolean;
     knownVaults: string[];
+    quickSetupCode?: string;
 }
 
 const DEFAULT_SETTINGS: SyncSettings = {
@@ -462,13 +463,38 @@ export default class ObsidianSyncPlugin extends Plugin {
             return;
         }
 
+        // Generate a quick setup code that includes all settings
+        const quickSetupData = {
+            serverUrl: this.settings.serverUrl,
+            username: this.settings.username,
+            token: this.settings.token,
+            vaults: vaults.map((v: any) => v.name)
+        };
+        const quickSetupCode = btoa(JSON.stringify(quickSetupData));
+
         // Create a file with instructions
         const instructions = `# Vault Setup Instructions for Mobile
+
+## Quick Setup (NEW! - Fewer Steps)
+
+### Your Quick Setup Code:
+\`\`\`
+${quickSetupCode}
+\`\`\`
+
+### Steps:
+1. Create a new vault in Obsidian mobile
+2. Install BRAT plugin
+3. Add this plugin: \`ohenecoker/obsidian-custom-sync\`
+4. Enable the plugin
+5. In plugin settings, paste the Quick Setup Code above
+6. Select which vault to sync from the dropdown
+7. Click "Apply Quick Setup" - Done!
 
 ## Your Vaults on Server:
 ${vaults.map((v: any) => `- ${v.name}`).join('\n')}
 
-## How to Access Each Vault on Mobile:
+## Manual Setup (if Quick Setup doesn't work):
 
 1. **For each vault you want to access:**
    - In Obsidian mobile, tap "Create new vault" or "Open folder as vault"
@@ -489,16 +515,6 @@ ${vaults.map((v: any) => `- ${v.name}`).join('\n')}
 
 4. **Sync the vault:**
    - Click "Sync Now" to pull all files from the server
-
-## Current Vault Configuration:
-- Server: ${this.settings.serverUrl}
-- Username: ${this.settings.username}
-- Current Vault: ${this.settings.vaultName || this.app.vault.getName()}
-
-## Quick Setup Commands:
-After creating each vault and installing the plugin, you can quickly sync by:
-1. Opening the command palette
-2. Running "Custom Sync: Sync vault with server"
 `;
 
         // Create or update the instructions file
@@ -519,6 +535,32 @@ After creating each vault and installing the plugin, you can quickly sync by:
             await this.app.workspace.openLinkText(fileName, '', false);
         }
     }
+
+    async applyQuickSetup(code: string, selectedVault: string) {
+        try {
+            const data = JSON.parse(atob(code));
+            
+            // Apply settings
+            this.settings.serverUrl = data.serverUrl;
+            this.settings.username = data.username;
+            this.settings.token = data.token;
+            this.settings.vaultName = selectedVault;
+            this.settings.knownVaults = data.vaults || [];
+            
+            await this.saveSettings();
+            
+            new Notice('Quick setup applied! Syncing vault...');
+            
+            // Automatically sync
+            await this.syncVault();
+            
+            return true;
+        } catch (error) {
+            new Notice('Invalid quick setup code');
+            console.error('Quick setup error:', error);
+            return false;
+        }
+    }
 }
 
 class SyncSettingTab extends PluginSettingTab {
@@ -535,6 +577,72 @@ class SyncSettingTab extends PluginSettingTab {
         containerEl.empty();
 
         containerEl.createEl('h2', {text: 'Custom Sync Settings'});
+
+        // Quick Setup Section (shown first if not logged in)
+        if (!this.plugin.settings.token) {
+            containerEl.createEl('h3', {text: 'Quick Setup'});
+            
+            let quickSetupCode = '';
+            let selectedVault = '';
+            
+            new Setting(containerEl)
+                .setName('Quick Setup Code')
+                .setDesc('Paste the code from another device to quickly configure')
+                .addText(text => text
+                    .setPlaceholder('Paste quick setup code here')
+                    .onChange((value) => {
+                        quickSetupCode = value;
+                        // Try to decode and show available vaults
+                        try {
+                            const data = JSON.parse(atob(value));
+                            if (data.vaults && data.vaults.length > 0) {
+                                // Update the dropdown with available vaults
+                                const dropdown = containerEl.querySelector('.vault-selector') as HTMLSelectElement;
+                                if (dropdown) {
+                                    dropdown.innerHTML = '';
+                                    data.vaults.forEach((vault: string) => {
+                                        const option = dropdown.createEl('option', {
+                                            text: vault,
+                                            value: vault
+                                        });
+                                    });
+                                    selectedVault = data.vaults[0];
+                                }
+                            }
+                        } catch (e) {
+                            // Invalid code, ignore
+                        }
+                    }));
+
+            new Setting(containerEl)
+                .setName('Select Vault')
+                .setDesc('Choose which vault to sync')
+                .addDropdown(dropdown => {
+                    dropdown.selectEl.addClass('vault-selector');
+                    dropdown.addOption('', 'Select a vault...');
+                    dropdown.onChange((value) => {
+                        selectedVault = value;
+                    });
+                });
+
+            new Setting(containerEl)
+                .addButton(button => button
+                    .setButtonText('Apply Quick Setup')
+                    .setCta()
+                    .onClick(async () => {
+                        if (quickSetupCode && selectedVault) {
+                            const success = await this.plugin.applyQuickSetup(quickSetupCode, selectedVault);
+                            if (success) {
+                                this.display(); // Refresh settings
+                            }
+                        } else {
+                            new Notice('Please paste a quick setup code and select a vault');
+                        }
+                    }));
+
+            containerEl.createEl('hr');
+            containerEl.createEl('h3', {text: 'Manual Setup'});
+        }
 
         // Server URL
         new Setting(containerEl)
@@ -694,6 +802,27 @@ class SyncSettingTab extends PluginSettingTab {
                     .setButtonText('Generate Setup Guide')
                     .onClick(async () => {
                         await this.plugin.showVaultSetupInstructions();
+                    }));
+
+            // Quick Setup Code Generator
+            new Setting(containerEl)
+                .setName('Quick Setup Code')
+                .setDesc('Copy this code to quickly set up on another device')
+                .addButton(button => button
+                    .setButtonText('Copy Quick Setup Code')
+                    .onClick(async () => {
+                        const vaults = await this.plugin.fetchAllVaults();
+                        const quickSetupData = {
+                            serverUrl: this.plugin.settings.serverUrl,
+                            username: this.plugin.settings.username,
+                            token: this.plugin.settings.token,
+                            vaults: vaults ? vaults.map((v: any) => v.name) : []
+                        };
+                        const quickSetupCode = btoa(JSON.stringify(quickSetupData));
+                        
+                        // Copy to clipboard
+                        await navigator.clipboard.writeText(quickSetupCode);
+                        new Notice('Quick setup code copied to clipboard!');
                     }));
         }
     }
