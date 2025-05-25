@@ -1,0 +1,19 @@
+/* This CSS file will be included with your plugin */
+
+.sync-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.sync-status-bar.syncing {
+    color: var(--text-accent);
+}
+
+.sync-status-bar.error {
+    color: var(--text-error);
+}
+
+.sync-status-bar.success {
+    color: var(--text-success);
+}
