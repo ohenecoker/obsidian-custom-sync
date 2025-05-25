@@ -53,6 +53,15 @@ export default class ObsidianSyncPlugin extends Plugin {
             }
         });
 
+        // Add command for vault setup instructions
+        this.addCommand({
+            id: 'show-vault-setup',
+            name: 'Show vault setup instructions',
+            callback: async () => {
+                await this.showVaultSetupInstructions();
+            }
+        });
+
         // Add settings tab
         this.addSettingTab(new SyncSettingTab(this.app, this));
 
@@ -445,6 +454,71 @@ export default class ObsidianSyncPlugin extends Plugin {
             return [];
         }
     }
+
+    async showVaultSetupInstructions() {
+        const vaults = await this.fetchAllVaults();
+        if (!vaults || vaults.length === 0) {
+            new Notice('No vaults found on server');
+            return;
+        }
+
+        // Create a file with instructions
+        const instructions = `# Vault Setup Instructions for Mobile
+
+## Your Vaults on Server:
+${vaults.map((v: any) => `- ${v.name}`).join('\n')}
+
+## How to Access Each Vault on Mobile:
+
+1. **For each vault you want to access:**
+   - In Obsidian mobile, tap "Create new vault" or "Open folder as vault"
+   - Name it the same as on the server (e.g., "${vaults[0]?.name || 'Work'}")
+   - Create the vault
+
+2. **Install this sync plugin in the new vault:**
+   - Go to Settings → Community plugins
+   - Browse and install "BRAT" 
+   - Use BRAT to add: ohenecoker/obsidian-custom-sync
+   - Enable the Custom Sync plugin
+
+3. **Configure the plugin:**
+   - Server URL: ${this.settings.serverUrl}
+   - Username: ${this.settings.username}
+   - Vault name: [Same as the vault name on server]
+   - Use the same login credentials
+
+4. **Sync the vault:**
+   - Click "Sync Now" to pull all files from the server
+
+## Current Vault Configuration:
+- Server: ${this.settings.serverUrl}
+- Username: ${this.settings.username}
+- Current Vault: ${this.settings.vaultName || this.app.vault.getName()}
+
+## Quick Setup Commands:
+After creating each vault and installing the plugin, you can quickly sync by:
+1. Opening the command palette
+2. Running "Custom Sync: Sync vault with server"
+`;
+
+        // Create or update the instructions file
+        const fileName = 'Vault Setup Instructions.md';
+        const existingFile = this.app.vault.getAbstractFileByPath(fileName);
+        
+        if (existingFile instanceof TFile) {
+            await this.app.vault.modify(existingFile, instructions);
+        } else {
+            await this.app.vault.create(fileName, instructions);
+        }
+
+        new Notice('Setup instructions created! Check "Vault Setup Instructions.md"');
+        
+        // Open the file
+        const file = this.app.vault.getAbstractFileByPath(fileName);
+        if (file instanceof TFile) {
+            await this.app.workspace.openLinkText(fileName, '', false);
+        }
+    }
 }
 
 class SyncSettingTab extends PluginSettingTab {
@@ -610,6 +684,16 @@ class SyncSettingTab extends PluginSettingTab {
                     .setButtonText('Sync All Vaults')
                     .onClick(async () => {
                         await this.plugin.syncAllVaults();
+                    }));
+
+            // Mobile vault setup
+            new Setting(containerEl)
+                .setName('Mobile Setup')
+                .setDesc('Generate instructions for setting up all vaults on mobile')
+                .addButton(button => button
+                    .setButtonText('Generate Setup Guide')
+                    .onClick(async () => {
+                        await this.plugin.showVaultSetupInstructions();
                     }));
         }
     }

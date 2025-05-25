@@ -1,7 +1,7 @@
 {
   "id": "obsidian-custom-sync",
   "name": "Custom Sync",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "minAppVersion": "0.15.0",
   "description": "Sync your Obsidian vault with your own server",
   "author": "Your Name",
