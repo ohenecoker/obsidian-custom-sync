@@ -584,41 +584,42 @@ class SyncSettingTab extends PluginSettingTab {
             
             let quickSetupCode = '';
             let selectedVault = '';
+            let vaultDropdown: any;
             
             new Setting(containerEl)
                 .setName('Quick Setup Code')
                 .setDesc('Paste the code from another device to quickly configure')
-                .addText(text => text
-                    .setPlaceholder('Paste quick setup code here')
-                    .onChange((value) => {
-                        quickSetupCode = value;
-                        // Try to decode and show available vaults
-                        try {
-                            const data = JSON.parse(atob(value));
-                            if (data.vaults && data.vaults.length > 0) {
-                                // Update the dropdown with available vaults
-                                const dropdown = containerEl.querySelector('.vault-selector') as HTMLSelectElement;
-                                if (dropdown) {
-                                    dropdown.innerHTML = '';
+                .addTextArea(text => {
+                    text.setPlaceholder('Paste your quick setup code here...')
+                        .setValue('')
+                        .onChange((value) => {
+                            quickSetupCode = value.trim();
+                            // Try to decode and show available vaults
+                            try {
+                                const data = JSON.parse(atob(quickSetupCode));
+                                if (data.vaults && data.vaults.length > 0 && vaultDropdown) {
+                                    // Clear and update dropdown
+                                    vaultDropdown.selectEl.empty();
+                                    vaultDropdown.addOption('', 'Select a vault...');
                                     data.vaults.forEach((vault: string) => {
-                                        const option = dropdown.createEl('option', {
-                                            text: vault,
-                                            value: vault
-                                        });
+                                        vaultDropdown.addOption(vault, vault);
                                     });
+                                    vaultDropdown.setValue(data.vaults[0]);
                                     selectedVault = data.vaults[0];
                                 }
+                            } catch (e) {
+                                // Invalid code, ignore
                             }
-                        } catch (e) {
-                            // Invalid code, ignore
-                        }
-                    }));
+                        });
+                    text.inputEl.style.width = '100%';
+                    text.inputEl.style.minHeight = '100px';
+                });
 
             new Setting(containerEl)
                 .setName('Select Vault')
                 .setDesc('Choose which vault to sync')
                 .addDropdown(dropdown => {
-                    dropdown.selectEl.addClass('vault-selector');
+                    vaultDropdown = dropdown;
                     dropdown.addOption('', 'Select a vault...');
                     dropdown.onChange((value) => {
                         selectedVault = value;

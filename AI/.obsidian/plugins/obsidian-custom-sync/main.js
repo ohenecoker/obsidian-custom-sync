@@ -63,6 +63,13 @@ var ObsidianSyncPlugin = class extends import_obsidian.Plugin {
         await this.syncAllVaults();
       }
     });
+    this.addCommand({
+      id: "show-vault-setup",
+      name: "Show vault setup instructions",
+      callback: async () => {
+        await this.showVaultSetupInstructions();
+      }
+    });
     this.addSettingTab(new SyncSettingTab(this.app, this));
     if (this.settings.token && this.settings.syncInterval > 0) {
       this.startAutoSync();
@@ -293,12 +300,48 @@ var ObsidianSyncPlugin = class extends import_obsidian.Plugin {
       this.settings.knownVaults = vaults.map((v) => v.name);
       await this.saveSettings();
       new import_obsidian.Notice(`Found ${vaults.length} vaults. Syncing all...`);
+      const syncedVaultsFolder = "Synced Vaults";
+      await this.ensureDirectory(syncedVaultsFolder);
       for (const vault of vaults) {
-        const currentVaultName = this.settings.vaultName;
-        this.settings.vaultName = vault.name;
+        if (vault.name === this.settings.vaultName || vault.name === this.app.vault.getName()) {
+          continue;
+        }
         new import_obsidian.Notice(`Syncing vault: ${vault.name}`);
-        await this.pullChanges();
-        this.settings.vaultName = currentVaultName;
+        const vaultFolder = `${syncedVaultsFolder}/${vault.name}`;
+        await this.ensureDirectory(vaultFolder);
+        const filesResponse = await fetch(`${this.settings.serverUrl}/sync/pull`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${this.settings.token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            vaultName: vault.name,
+            lastSync: null
+            // Get all files
+          })
+        });
+        if (!filesResponse.ok) {
+          new import_obsidian.Notice(`Failed to sync vault: ${vault.name}`);
+          continue;
+        }
+        const data = await filesResponse.json();
+        const serverFiles = data.files;
+        for (const serverFile of serverFiles) {
+          if (!serverFile.deleted && serverFile.content) {
+            const targetPath = `${vaultFolder}/${serverFile.path}`;
+            const dir = targetPath.substring(0, targetPath.lastIndexOf("/"));
+            if (dir) {
+              await this.ensureDirectory(dir);
+            }
+            const existingFile = this.app.vault.getAbstractFileByPath(targetPath);
+            if (existingFile instanceof import_obsidian.TFile) {
+              await this.app.vault.modify(existingFile, serverFile.content);
+            } else {
+              await this.app.vault.create(targetPath, serverFile.content);
+            }
+          }
+        }
       }
       new import_obsidian.Notice("All vaults synced successfully!");
     } catch (error) {
@@ -329,6 +372,94 @@ var ObsidianSyncPlugin = class extends import_obsidian.Plugin {
       return [];
     }
   }
+  async showVaultSetupInstructions() {
+    var _a;
+    const vaults = await this.fetchAllVaults();
+    if (!vaults || vaults.length === 0) {
+      new import_obsidian.Notice("No vaults found on server");
+      return;
+    }
+    const quickSetupData = {
+      serverUrl: this.settings.serverUrl,
+      username: this.settings.username,
+      token: this.settings.token,
+      vaults: vaults.map((v) => v.name)
+    };
+    const quickSetupCode = btoa(JSON.stringify(quickSetupData));
+    const instructions = `# Vault Setup Instructions for Mobile
+
+## Quick Setup (NEW! - Fewer Steps)
+
+### Your Quick Setup Code:
+\`\`\`
+${quickSetupCode}
+\`\`\`
+
+### Steps:
+1. Create a new vault in Obsidian mobile
+2. Install BRAT plugin
+3. Add this plugin: \`ohenecoker/obsidian-custom-sync\`
+4. Enable the plugin
+5. In plugin settings, paste the Quick Setup Code above
+6. Select which vault to sync from the dropdown
+7. Click "Apply Quick Setup" - Done!
+
+## Your Vaults on Server:
+${vaults.map((v) => `- ${v.name}`).join("\n")}
+
+## Manual Setup (if Quick Setup doesn't work):
+
+1. **For each vault you want to access:**
+   - In Obsidian mobile, tap "Create new vault" or "Open folder as vault"
+   - Name it the same as on the server (e.g., "${((_a = vaults[0]) == null ? void 0 : _a.name) || "Work"}")
+   - Create the vault
+
+2. **Install this sync plugin in the new vault:**
+   - Go to Settings \u2192 Community plugins
+   - Browse and install "BRAT" 
+   - Use BRAT to add: ohenecoker/obsidian-custom-sync
+   - Enable the Custom Sync plugin
+
+3. **Configure the plugin:**
+   - Server URL: ${this.settings.serverUrl}
+   - Username: ${this.settings.username}
+   - Vault name: [Same as the vault name on server]
+   - Use the same login credentials
+
+4. **Sync the vault:**
+   - Click "Sync Now" to pull all files from the server
+`;
+    const fileName = "Vault Setup Instructions.md";
+    const existingFile = this.app.vault.getAbstractFileByPath(fileName);
+    if (existingFile instanceof import_obsidian.TFile) {
+      await this.app.vault.modify(existingFile, instructions);
+    } else {
+      await this.app.vault.create(fileName, instructions);
+    }
+    new import_obsidian.Notice('Setup instructions created! Check "Vault Setup Instructions.md"');
+    const file = this.app.vault.getAbstractFileByPath(fileName);
+    if (file instanceof import_obsidian.TFile) {
+      await this.app.workspace.openLinkText(fileName, "", false);
+    }
+  }
+  async applyQuickSetup(code, selectedVault) {
+    try {
+      const data = JSON.parse(atob(code));
+      this.settings.serverUrl = data.serverUrl;
+      this.settings.username = data.username;
+      this.settings.token = data.token;
+      this.settings.vaultName = selectedVault;
+      this.settings.knownVaults = data.vaults || [];
+      await this.saveSettings();
+      new import_obsidian.Notice("Quick setup applied! Syncing vault...");
+      await this.syncVault();
+      return true;
+    } catch (error) {
+      new import_obsidian.Notice("Invalid quick setup code");
+      console.error("Quick setup error:", error);
+      return false;
+    }
+  }
 };
 var SyncSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
@@ -339,6 +470,50 @@ var SyncSettingTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h2", { text: "Custom Sync Settings" });
+    if (!this.plugin.settings.token) {
+      containerEl.createEl("h3", { text: "Quick Setup" });
+      let quickSetupCode = "";
+      let selectedVault = "";
+      new import_obsidian.Setting(containerEl).setName("Quick Setup Code").setDesc("Paste the code from another device to quickly configure").addText((text) => text.setPlaceholder("Paste quick setup code here").onChange((value) => {
+        quickSetupCode = value;
+        try {
+          const data = JSON.parse(atob(value));
+          if (data.vaults && data.vaults.length > 0) {
+            const dropdown = containerEl.querySelector(".vault-selector");
+            if (dropdown) {
+              dropdown.innerHTML = "";
+              data.vaults.forEach((vault) => {
+                const option = dropdown.createEl("option", {
+                  text: vault,
+                  value: vault
+                });
+              });
+              selectedVault = data.vaults[0];
+            }
+          }
+        } catch (e) {
+        }
+      }));
+      new import_obsidian.Setting(containerEl).setName("Select Vault").setDesc("Choose which vault to sync").addDropdown((dropdown) => {
+        dropdown.selectEl.addClass("vault-selector");
+        dropdown.addOption("", "Select a vault...");
+        dropdown.onChange((value) => {
+          selectedVault = value;
+        });
+      });
+      new import_obsidian.Setting(containerEl).addButton((button) => button.setButtonText("Apply Quick Setup").setCta().onClick(async () => {
+        if (quickSetupCode && selectedVault) {
+          const success = await this.plugin.applyQuickSetup(quickSetupCode, selectedVault);
+          if (success) {
+            this.display();
+          }
+        } else {
+          new import_obsidian.Notice("Please paste a quick setup code and select a vault");
+        }
+      }));
+      containerEl.createEl("hr");
+      containerEl.createEl("h3", { text: "Manual Setup" });
+    }
     new import_obsidian.Setting(containerEl).setName("Server URL").setDesc("URL of your sync server").addText((text) => text.setPlaceholder("https://example.com/sync").setValue(this.plugin.settings.serverUrl).onChange(async (value) => {
       this.plugin.settings.serverUrl = value;
       await this.plugin.saveSettings();
@@ -408,6 +583,21 @@ var SyncSettingTab = class extends import_obsidian.PluginSettingTab {
         }
       })).addButton((button) => button.setButtonText("Sync All Vaults").onClick(async () => {
         await this.plugin.syncAllVaults();
+      }));
+      new import_obsidian.Setting(containerEl).setName("Mobile Setup").setDesc("Generate instructions for setting up all vaults on mobile").addButton((button) => button.setButtonText("Generate Setup Guide").onClick(async () => {
+        await this.plugin.showVaultSetupInstructions();
+      }));
+      new import_obsidian.Setting(containerEl).setName("Quick Setup Code").setDesc("Copy this code to quickly set up on another device").addButton((button) => button.setButtonText("Copy Quick Setup Code").onClick(async () => {
+        const vaults = await this.plugin.fetchAllVaults();
+        const quickSetupData = {
+          serverUrl: this.plugin.settings.serverUrl,
+          username: this.plugin.settings.username,
+          token: this.plugin.settings.token,
+          vaults: vaults ? vaults.map((v) => v.name) : []
+        };
+        const quickSetupCode = btoa(JSON.stringify(quickSetupData));
+        await navigator.clipboard.writeText(quickSetupCode);
+        new import_obsidian.Notice("Quick setup code copied to clipboard!");
       }));
     }
   }
