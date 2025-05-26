@@ -17,7 +17,7 @@ A self-hosted synchronization plugin for Obsidian that allows you to sync your v
 
 ### Desktop
 
-1. Download the latest release from [Releases](https://github.com/obsidian-sync-plugin/obsidian-sync-plugin/releases)
+1. Download the latest release from [Releases](https://github.com/ohenecoker/obsidian-custom-sync/releases)
 2. Extract files to your vault's `.obsidian/plugins/obsidian-custom-sync/` folder
 3. Reload Obsidian
 4. Enable "Custom Sync" in Settings → Community plugins
@@ -25,7 +25,7 @@ A self-hosted synchronization plugin for Obsidian that allows you to sync your v
 ### Mobile (iOS/Android)
 
 1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
-2. In BRAT settings, add beta plugin: `obsidian-sync-plugin/obsidian-sync-plugin`
+2. In BRAT settings, add beta plugin: `ohenecoker/obsidian-custom-sync`
 3. Enable the Custom Sync plugin
 
 ## Setup
@@ -100,7 +100,7 @@ MIT License - see [LICENSE](LICENSE) for details
 
 ## Support
 
-- Report issues at [GitHub Issues](https://github.com/obsidian-sync-plugin/obsidian-sync-plugin/issues)
+- Report issues at [GitHub Issues](https://github.com/ohenecoker/obsidian-custom-sync/issues)
 - For server setup help, see the [server documentation](https://github.com/obsidian-sync-plugin/sync-server)
 
 ## Acknowledgments
