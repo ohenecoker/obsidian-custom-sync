@@ -1,4 +1,37 @@
+# Dependencies
 node_modules/
+
+# Build output (root only)
+/main.js
+/styles.css
+
+# Keep release files
+!releases/**/main.js
+!releases/**/styles.css
+
+# Environment files
 .env
-*.log
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Personal config
+config.json
+settings.json

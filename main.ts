@@ -13,7 +13,7 @@ interface SyncSettings {
 }
 
 const DEFAULT_SETTINGS: SyncSettings = {
-    serverUrl: 'https://jollofriceboy.com/api',
+    serverUrl: '',
     username: '',
     token: '',
     vaultName: '',
@@ -485,7 +485,7 @@ ${quickSetupCode}
 ### Steps:
 1. Create a new vault in Obsidian mobile
 2. Install BRAT plugin
-3. Add this plugin: \`ohenecoker/obsidian-custom-sync\`
+3. Add this plugin: \`obsidian-sync-plugin/obsidian-sync-plugin\`
 4. Enable the plugin
 5. In plugin settings, paste the Quick Setup Code above
 6. Select which vault to sync from the dropdown
@@ -504,7 +504,7 @@ ${vaults.map((v: any) => `- ${v.name}`).join('\n')}
 2. **Install this sync plugin in the new vault:**
    - Go to Settings → Community plugins
    - Browse and install "BRAT" 
-   - Use BRAT to add: ohenecoker/obsidian-custom-sync
+   - Use BRAT to add: obsidian-sync-plugin/obsidian-sync-plugin
    - Enable the Custom Sync plugin
 
 3. **Configure the plugin:**

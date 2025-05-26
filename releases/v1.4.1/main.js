@@ -29,7 +29,7 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var DEFAULT_SETTINGS = {
-  serverUrl: "https://jollofriceboy.com/api",
+  serverUrl: "",
   username: "",
   token: "",
   vaultName: "",
@@ -398,7 +398,7 @@ ${quickSetupCode}
 ### Steps:
 1. Create a new vault in Obsidian mobile
 2. Install BRAT plugin
-3. Add this plugin: \`ohenecoker/obsidian-custom-sync\`
+3. Add this plugin: \`obsidian-sync-plugin/obsidian-sync-plugin\`
 4. Enable the plugin
 5. In plugin settings, paste the Quick Setup Code above
 6. Select which vault to sync from the dropdown
@@ -417,7 +417,7 @@ ${vaults.map((v) => `- ${v.name}`).join("\n")}
 2. **Install this sync plugin in the new vault:**
    - Go to Settings \u2192 Community plugins
    - Browse and install "BRAT" 
-   - Use BRAT to add: ohenecoker/obsidian-custom-sync
+   - Use BRAT to add: obsidian-sync-plugin/obsidian-sync-plugin
    - Enable the Custom Sync plugin
 
 3. **Configure the plugin:**
@@ -474,28 +474,29 @@ var SyncSettingTab = class extends import_obsidian.PluginSettingTab {
       containerEl.createEl("h3", { text: "Quick Setup" });
       let quickSetupCode = "";
       let selectedVault = "";
-      new import_obsidian.Setting(containerEl).setName("Quick Setup Code").setDesc("Paste the code from another device to quickly configure").addText((text) => text.setPlaceholder("Paste quick setup code here").onChange((value) => {
-        quickSetupCode = value;
-        try {
-          const data = JSON.parse(atob(value));
-          if (data.vaults && data.vaults.length > 0) {
-            const dropdown = containerEl.querySelector(".vault-selector");
-            if (dropdown) {
-              dropdown.innerHTML = "";
+      let vaultDropdown;
+      new import_obsidian.Setting(containerEl).setName("Quick Setup Code").setDesc("Paste the code from another device to quickly configure").addTextArea((text) => {
+        text.setPlaceholder("Paste your quick setup code here...").setValue("").onChange((value) => {
+          quickSetupCode = value.trim();
+          try {
+            const data = JSON.parse(atob(quickSetupCode));
+            if (data.vaults && data.vaults.length > 0 && vaultDropdown) {
+              vaultDropdown.selectEl.empty();
+              vaultDropdown.addOption("", "Select a vault...");
               data.vaults.forEach((vault) => {
-                const option = dropdown.createEl("option", {
-                  text: vault,
-                  value: vault
-                });
+                vaultDropdown.addOption(vault, vault);
               });
+              vaultDropdown.setValue(data.vaults[0]);
               selectedVault = data.vaults[0];
             }
+          } catch (e) {
           }
-        } catch (e) {
-        }
-      }));
+        });
+        text.inputEl.style.width = "100%";
+        text.inputEl.style.minHeight = "100px";
+      });
       new import_obsidian.Setting(containerEl).setName("Select Vault").setDesc("Choose which vault to sync").addDropdown((dropdown) => {
-        dropdown.selectEl.addClass("vault-selector");
+        vaultDropdown = dropdown;
         dropdown.addOption("", "Select a vault...");
         dropdown.onChange((value) => {
           selectedVault = value;
